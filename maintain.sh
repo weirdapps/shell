@@ -1,75 +1,96 @@
-#!/bin/bash
+#!/bin/zsh
 
-# Enhanced macOS Maintenance Script
-
-echo "Starting maintenance script..."
-echo "Timestamp: $(date)"
-echo "Please make sure you've backed up your data before running this script!"
-read -p "Press enter to continue..."
-
-# Function to check the success of operations
-check_status() {
-    if [ $? -eq 0 ]; then
-        echo "Successfully completed: $1"
-    else
-        echo "Failed to complete: $1"
-        exit 1
-    fi
+# Function to print messages
+print_message() {
+    echo "=============================="
+    echo $1
+    echo "=============================="
 }
 
-# Update macOS
-echo "Checking for macOS updates..."
-softwareupdate -l
-check_status "Check macOS updates"
+# System Update
+print_message "Starting System Update"
+softwareupdate -ia --verbose
 
-# Uncomment the following lines if you wish to install updates automatically
-#echo "Installing macOS updates..."
-#softwareupdate -ia
-#check_status "Install macOS updates"
-
-# Clean up cache files
-echo "Cleaning up cache files..."
-sudo rm -rf ~/Library/Caches/* /Library/Caches/* 2>/dev/null
-echo "Completed cleanup with possible permissions issues ignored."
-
-
-# Remove temporary files
-echo "Removing temporary files..."
-sudo rm -rf /private/var/tmp/*
-check_status "Remove temporary files"
-
-# Clean up logs
-echo "Cleaning up logs..."
-sudo rm -rf /private/var/log/*
-check_status "Cleanup log files"
-
-# Empty the trash
-echo "Emptying the trash..."
-sudo rm -rf ~/.Trash/*
-check_status "Empty the trash"
-
-# Update Homebrew
-if command -v brew &> /dev/null; then
-    echo "Updating Homebrew..."
+# Homebrew Update and Cleanup
+print_message "Updating and Cleaning Homebrew"
+if command -v brew >/dev/null 2>&1; then
     brew update
     brew upgrade
     brew cleanup
-    check_status "Homebrew update"
+    brew doctor
+else
+    echo "Homebrew not found. Skipping Homebrew updates."
 fi
 
-# Run maintenance scripts
-echo "Running maintenance scripts..."
-sudo periodic daily
-check_status "Run daily maintenance"
-sudo periodic weekly
-check_status "Run weekly maintenance"
-sudo periodic monthly
-check_status "Run monthly maintenance"
+# Clean Caches
+print_message "Cleaning System Caches"
+if [[ -d "/Library/Caches" ]]; then
+    sudo find /Library/Caches -mindepth 1 -maxdepth 1 -type d ! -name "com.apple.*" -exec rm -rf {} \; 2>/dev/null
+fi
+if [[ -d "/System/Library/Caches" ]]; then
+    sudo find /System/Library/Caches -mindepth 1 -maxdepth 1 -type d ! -name "com.apple.*" -exec rm -rf {} \; 2>/dev/null
+fi
 
-# Reindex Spotlight
-echo "Reindexing Spotlight..."
-sudo mdutil -E /
-check_status "Reindex Spotlight"
+# Clean temporary files using tmutil
+print_message "Cleaning Temporary Files"
+sudo tmutil deletelocalsnapshots /
 
-echo "Maintenance complete!"
-echo "Timestamp: $(date)"
+# Remove unused files from Downloads
+print_message "Cleaning Downloads Folder"
+if [[ -d ~/Downloads ]]; then
+    find ~/Downloads -mindepth 1 -exec rm -rf {} \;
+fi
+
+# Purge inactive memory
+print_message "Purging Inactive Memory"
+sudo purge
+
+# Update App Store applications
+print_message "Updating App Store Applications"
+if command -v mas >/dev/null 2>&1; then
+    mas upgrade
+else
+    echo "mas CLI not found. Skipping App Store updates."
+fi
+
+# Remove old iOS device backups
+print_message "Removing old iOS device backups"
+if [[ -d ~/Library/Application\ Support/MobileSync/Backup ]]; then
+    find ~/Library/Application\ Support/MobileSync/Backup -mindepth 1 -exec rm -rf {} \;
+fi
+
+# Clear application logs
+print_message "Clearing Application Logs"
+log_directories=(
+    /private/var/log
+    /private/var/log/asl
+    # /private/var/log/DiagnosticMessages
+    /private/var/log/powermanagement
+    /private/var/log/install.log
+)
+
+for dir in $log_directories; do
+    if [[ -d $dir ]]; then
+        sudo find $dir -mindepth 1 -exec rm -rf {} \;
+    fi
+done
+
+# Check for Malware
+# print_message "Running Malware Check"
+# if command -v malwarebytes >/dev/null 2>&1; then
+#     sudo malwarebytes --scan --deep
+# else
+#     echo "Malwarebytes not found. Skipping malware scan."
+# fi
+
+# Verify system preferences
+print_message "Verifying System Preferences"
+defaults read > /dev/null 2>&1
+
+# Backup important data
+# print_message "Backing Up Important Data"
+# rsync -av --delete ~/Documents/ /Volumes/BackupDrive/Documents/
+# rsync -av --delete ~/Pictures/ /Volumes/BackupDrive/Pictures/
+# rsync -av --delete ~/Desktop/ /Volumes/BackupDrive/Desktop/
+
+print_message "Maintenance Script Completed"
